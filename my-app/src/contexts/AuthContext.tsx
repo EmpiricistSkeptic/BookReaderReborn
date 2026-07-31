@@ -1,11 +1,7 @@
-import React, {
-  createContext,
-  useEffect,
-  useState,
-  ReactNode,
-} from "react";
+import React, { createContext, useEffect, useState, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { loginUser, registerUser } from "../services/authService";
+import { setUnauthorizedHandler } from "../services/apiService";
 
 interface User {
   [key: string]: unknown;
@@ -43,9 +39,7 @@ interface AuthProviderProps {
   children: ReactNode;
 }
 
-export const AuthContext = createContext<AuthContextType | undefined>(
-  undefined
-);
+export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
@@ -77,11 +71,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
     restoreSession();
   }, []);
 
-  async function saveAuthData(
-    userData: User,
-    access: string,
-    refresh: string
-  ) {
+  // ============================================================
+  // АВТОМАТИЧЕСКИЙ ВЫХОД ПРИ ИСТЁКШЕЙ СЕССИИ
+  // ============================================================
+  // ApiService сам обновляет access token через refresh token при
+  // каждом 401. Но если и refresh token уже недействителен,
+  // ApiService чистит AsyncStorage и зовёт этот колбэк — здесь мы
+  // синхронизируем React-состояние, чтобы isAuthenticated стал
+  // false и AppNavigator сам переключился на экран логина, без
+  // ручных проверок в каждом экране.
+  useEffect(() => {
+    function handleUnauthorized() {
+      setUser(null);
+      setAccessToken(null);
+      setRefreshToken(null);
+      // AsyncStorage уже очищен внутри apiRequest — здесь его трогать не нужно.
+    }
+
+    setUnauthorizedHandler(handleUnauthorized);
+
+    return () => {
+      setUnauthorizedHandler(null);
+    };
+  }, []);
+
+  async function saveAuthData(userData: User, access: string, refresh: string) {
     setUser(userData);
     setAccessToken(access);
     setRefreshToken(refresh);
@@ -93,13 +107,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     ]);
   }
 
-  async function signUp(
-    userData: RegisterData
-  ): Promise<AuthResult> {
-    const { user, access, refresh, message } =
-      await registerUser(userData);
+  async function signUp(userData: RegisterData): Promise<AuthResult> {
+    const { user, access, refresh, message } = await registerUser(userData);
 
-    await saveAuthData(user, access, refresh);
+    await saveAuthData(user as User, access, refresh);
 
     return {
       success: true,
@@ -107,13 +118,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     };
   }
 
-  async function signIn(
-    credentials: LoginCredentials
-  ): Promise<AuthResult> {
-    const { user, access, refresh, message } =
-      await loginUser(credentials);
+  async function signIn(credentials: LoginCredentials): Promise<AuthResult> {
+    const { user, access, refresh, message } = await loginUser(credentials);
 
-    await saveAuthData(user, access, refresh);
+    await saveAuthData(user as User, access, refresh);
 
     return {
       success: true,
@@ -126,11 +134,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setAccessToken(null);
     setRefreshToken(null);
 
-    await AsyncStorage.multiRemove([
-      "user",
-      "accessToken",
-      "refreshToken",
-    ]);
+    await AsyncStorage.multiRemove(["user", "accessToken", "refreshToken"]);
   }
 
   return (

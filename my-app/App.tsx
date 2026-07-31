@@ -7,12 +7,16 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AuthProvider, AuthContext } from './src/contexts/AuthContext';
+import { SelectionProvider } from './src/contexts/SelectionContext';
 
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RegistrationScreen from './src/screens/RegistrationScreen';
 
 import HomeScreen from './src/screens/HomeScreen';
+import BookDetailScreen from './src/screens/BookDetailScreen';
+import BookReaderScreen from './src/screens/BookReaderScreen';
+import ConversationScreen from './src/screens/ConversationScreen';
 
 import { RootStackParamList } from './src/navigation/types';
 
@@ -64,10 +68,21 @@ function AppNavigator() {
           </>
         ) : (
           <>
-            {/* Temporary screen */}
             <Stack.Screen
               name="Home"
               component={HomeScreen}
+            />
+            <Stack.Screen
+              name="BookDetail"
+              component={BookDetailScreen}
+            />
+            <Stack.Screen
+              name="BookReader"
+              component={BookReaderScreen}
+            />
+            <Stack.Screen
+              name="Conversation"
+              component={ConversationScreen}
             />
           </>
         )}
@@ -80,7 +95,9 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
-        <AppNavigator />
+        <SelectionProvider>
+          <AppNavigator />
+        </SelectionProvider>
       </AuthProvider>
     </GestureHandlerRootView>
   );
