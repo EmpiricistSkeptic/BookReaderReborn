@@ -117,7 +117,7 @@ const BookReaderScreen: React.FC<BookReaderScreenProps> = ({ route, navigation }
   const [isTranslating, setIsTranslating] = useState<boolean>(false);
   const [translationResult, setTranslationResult] = useState<TranslationResult | null>(null);
   const [chunkTranslations, setChunkTranslations] = useState<Record<number, ChunkTranslationState>>({});
-  const [translationService, setTranslationService] = useState<'microsoft' | 'deepl' | 'deepseek'>('deepl');
+  const [translationService, setTranslationService] = useState<'microsoft' | 'deepl' | 'deepseek'>('deepseek');
   const [speakingIdentifier, setSpeakingIdentifier] = useState<string | null>(null);
 
   // --- Рефы ---

@@ -1,4 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  memo,
+} from 'react';
+
 import {
   View,
   Text,
@@ -15,37 +22,40 @@ import {
   Alert,
   ListRenderItemInfo,
 } from 'react-native';
+
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { getConversationDetails, sendMessage } from '../services/conversationService';
+import {
+  getConversationDetails,
+  getConversationMessages,
+  sendMessage,
+  PaginatedMessagesResponse,
+} from '../services/conversationService';
 
-// Включение анимаций на Android при старте
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 // --- ТИПЫ И ИНТЕРФЕЙСЫ ---
+
 export interface Message {
   id: number | string;
   role: 'user' | 'assistant' | 'system' | string;
   content: string;
+  timestamp?: string;
   created_at?: string;
-  [key: string]: any;
-}
-
-export interface ConversationDetails {
-  id: number | string;
-  title?: string;
-  messages: Message[];
   [key: string]: any;
 }
 
 export interface SendMessageResponse {
   user_message: Message;
-  bot_message?: Message;
+  ai_response?: Message;
   [key: string]: any;
 }
 
@@ -54,10 +64,19 @@ export interface ConversationRouteParams {
 }
 
 interface ConversationScreenProps {
-  route: { params: ConversationRouteParams };
+  route: {
+    params: ConversationRouteParams;
+  };
+
   navigation: {
     goBack: () => void;
-    setOptions: (options: { title?: string; [key: string]: any }) => void;
+    setOptions: (
+      options: {
+        title?: string;
+        [key: string]: any;
+      }
+    ) => void;
+
     [key: string]: any;
   };
 }
@@ -80,6 +99,7 @@ interface MessageBubbleProps {
 }
 
 // --- КОМПОНЕНТЫ АВАТАРОВ ---
+
 const AiAvatar: React.FC = memo(() => (
   <View style={styles.avatarWrapper}>
     <LinearGradient
@@ -88,7 +108,12 @@ const AiAvatar: React.FC = memo(() => (
       end={{ x: 1, y: 1 }}
       style={styles.aiAvatarGradient}
     >
-      <Ionicons name="sparkles" size={13} color="#ffffff" style={styles.iconCentered} />
+      <Ionicons
+        name="sparkles"
+        size={13}
+        color="#ffffff"
+        style={styles.iconCentered}
+      />
     </LinearGradient>
   </View>
 ));
@@ -101,109 +126,181 @@ const UserAvatar: React.FC = memo(() => (
       end={{ x: 1, y: 1 }}
       style={styles.userAvatarGradient}
     >
-      <Ionicons name="person" size={13} color="#ffffff" style={styles.iconCentered} />
+      <Ionicons
+        name="person"
+        size={13}
+        color="#ffffff"
+        style={styles.iconCentered}
+      />
     </LinearGradient>
   </View>
 ));
 
-// --- КОМПОНЕНТ: Верхний фиксированный баннер ---
-const ChatHeaderBanner: React.FC<ChatHeaderBannerProps> = memo(({ onBackPress }) => (
-  <View style={styles.headerBannerContainer}>
-    <LinearGradient
-      colors={['rgba(255, 255, 255, 0.08)', 'rgba(255, 255, 255, 0.03)']}
-      style={styles.headerBannerGradient}
-    >
-      <View style={styles.headerBannerContent}>
-        {onBackPress && (
-          <TouchableOpacity
-            activeOpacity={0.7}
-            style={styles.headerBackButton}
-            onPress={onBackPress}
-          >
-            <Ionicons name="chevron-back" size={20} color="#ffffff" style={{ paddingRight: 2 }} />
-          </TouchableOpacity>
-        )}
+// --- ВЕРХНИЙ БАННЕР ---
 
-        <View style={styles.headerBannerAvatarWrapper}>
-          <LinearGradient
-            colors={['#6366f1', '#3b82f6']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.headerBannerAvatar}
-          >
-            <Ionicons name="sparkles" size={18} color="#fff" style={styles.iconCentered} />
-          </LinearGradient>
-          <View style={styles.onlineStatusDot} />
-        </View>
-
-        <View style={styles.headerBannerTextGroup}>
-          <View style={styles.headerBannerTitleRow}>
-            <Text style={styles.headerBannerTitle}>AI Language Tutor</Text>
-            <View style={styles.aiBadgeTag}>
-              <Text style={styles.aiBadgeTagText}>PRO AI</Text>
-            </View>
-          </View>
-          <Text style={styles.headerBannerSubtitle}>Online • Always ready to help you practice</Text>
-        </View>
-      </View>
-    </LinearGradient>
-  </View>
-));
-
-// --- КОМПОНЕНТ: Приветственный экран ---
-const ChatEmptyState: React.FC<ChatEmptyStateProps> = memo(({ onPromptPress }) => {
-  const prompts: PromptItem[] = [
-    { icon: 'checkmark-done-circle-outline', text: 'Correct my sentence: "I goed to the cinema yesterday."' },
-    { icon: 'help-circle-outline', text: 'What is the difference between "affect" and "effect"?' },
-    { icon: 'book-outline', text: 'Give me an example of the Past Perfect tense.' },
-  ];
-
-  return (
-    <View style={styles.emptyStateContainer}>
-      <View style={styles.emptyStateContent}>
-        <View style={styles.aiBadgeWrapper}>
-          <LinearGradient
-            colors={['rgba(99, 102, 241, 0.35)', 'rgba(59, 130, 246, 0.05)']}
-            style={styles.aiBadgeGlow}
-          />
-          <LinearGradient
-            colors={['#6366f1', '#3b82f6']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.emptyStateAvatar}
-          >
-            <Ionicons name="sparkles" size={36} color="#fff" style={styles.iconCentered} />
-          </LinearGradient>
-        </View>
-
-        <Text style={styles.emptyStateTitle}>AI Language Tutor</Text>
-        <Text style={styles.emptyStateSubtitle}>
-          Ask questions, correct grammar, or practice real-world language skills together.
-        </Text>
-
-        <View style={styles.promptsContainer}>
-          <Text style={styles.promptsTitle}>SUGGESTED PROMPTS</Text>
-          {prompts.map((prompt, index) => (
+const ChatHeaderBanner: React.FC<ChatHeaderBannerProps> = memo(
+  ({ onBackPress }) => (
+    <View style={styles.headerBannerContainer}>
+      <LinearGradient
+        colors={[
+          'rgba(255, 255, 255, 0.08)',
+          'rgba(255, 255, 255, 0.03)',
+        ]}
+        style={styles.headerBannerGradient}
+      >
+        <View style={styles.headerBannerContent}>
+          {onBackPress && (
             <TouchableOpacity
-              key={index}
-              activeOpacity={0.75}
-              style={styles.promptButton}
-              onPress={() => onPromptPress(prompt.text)}
+              activeOpacity={0.7}
+              style={styles.headerBackButton}
+              onPress={onBackPress}
             >
-              <View style={styles.promptIconBadge}>
-                <Ionicons name={prompt.icon} size={18} color="#60a5fa" style={styles.iconCentered} />
-              </View>
-              <Text style={styles.promptText}>{prompt.text}</Text>
-              <Ionicons name="chevron-forward" size={16} color="rgba(255, 255, 255, 0.3)" />
+              <Ionicons
+                name="chevron-back"
+                size={20}
+                color="#ffffff"
+                style={{ paddingRight: 2 }}
+              />
             </TouchableOpacity>
-          ))}
+          )}
+
+          <View style={styles.headerBannerAvatarWrapper}>
+            <LinearGradient
+              colors={['#6366f1', '#3b82f6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.headerBannerAvatar}
+            >
+              <Ionicons
+                name="sparkles"
+                size={18}
+                color="#fff"
+                style={styles.iconCentered}
+              />
+            </LinearGradient>
+
+            <View style={styles.onlineStatusDot} />
+          </View>
+
+          <View style={styles.headerBannerTextGroup}>
+            <View style={styles.headerBannerTitleRow}>
+              <Text style={styles.headerBannerTitle}>
+                AI Language Tutor
+              </Text>
+
+              <View style={styles.aiBadgeTag}>
+                <Text style={styles.aiBadgeTagText}>
+                  PRO AI
+                </Text>
+              </View>
+            </View>
+
+            <Text style={styles.headerBannerSubtitle}>
+              Online • Always ready to help you practice
+            </Text>
+          </View>
+        </View>
+      </LinearGradient>
+    </View>
+  )
+);
+
+// --- ПРИВЕТСТВЕННЫЙ ЭКРАН ---
+
+const ChatEmptyState: React.FC<ChatEmptyStateProps> = memo(
+  ({ onPromptPress }) => {
+    const prompts: PromptItem[] = [
+      {
+        icon: 'checkmark-done-circle-outline',
+        text: 'Correct my sentence: "I goed to the cinema yesterday."',
+      },
+      {
+        icon: 'help-circle-outline',
+        text: 'What is the difference between "affect" and "effect"?',
+      },
+      {
+        icon: 'book-outline',
+        text: 'Give me an example of the Past Perfect tense.',
+      },
+    ];
+
+    return (
+      <View style={styles.emptyStateContainer}>
+        <View style={styles.emptyStateContent}>
+          <View style={styles.aiBadgeWrapper}>
+            <LinearGradient
+              colors={[
+                'rgba(99, 102, 241, 0.35)',
+                'rgba(59, 130, 246, 0.05)',
+              ]}
+              style={styles.aiBadgeGlow}
+            />
+
+            <LinearGradient
+              colors={['#6366f1', '#3b82f6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.emptyStateAvatar}
+            >
+              <Ionicons
+                name="sparkles"
+                size={36}
+                color="#fff"
+                style={styles.iconCentered}
+              />
+            </LinearGradient>
+          </View>
+
+          <Text style={styles.emptyStateTitle}>
+            AI Language Tutor
+          </Text>
+
+          <Text style={styles.emptyStateSubtitle}>
+            Ask questions, correct grammar, or practice real-world
+            language skills together.
+          </Text>
+
+          <View style={styles.promptsContainer}>
+            <Text style={styles.promptsTitle}>
+              SUGGESTED PROMPTS
+            </Text>
+
+            {prompts.map((prompt, index) => (
+              <TouchableOpacity
+                key={index}
+                activeOpacity={0.75}
+                style={styles.promptButton}
+                onPress={() => onPromptPress(prompt.text)}
+              >
+                <View style={styles.promptIconBadge}>
+                  <Ionicons
+                    name={prompt.icon}
+                    size={18}
+                    color="#60a5fa"
+                    style={styles.iconCentered}
+                  />
+                </View>
+
+                <Text style={styles.promptText}>
+                  {prompt.text}
+                </Text>
+
+                <Ionicons
+                  name="chevron-forward"
+                  size={16}
+                  color="rgba(255, 255, 255, 0.3)"
+                />
+              </TouchableOpacity>
+            ))}
+          </View>
         </View>
       </View>
-    </View>
-  );
-});
+    );
+  }
+);
 
-// --- КОМПОНЕНТ: Индикатор набора текста ---
+// --- ИНДИКАТОР НАБОРА ---
+
 const TypingIndicator: React.FC = memo(() => {
   const animations = useRef<Animated.Value[]>([
     new Animated.Value(0),
@@ -212,13 +309,26 @@ const TypingIndicator: React.FC = memo(() => {
   ]).current;
 
   useEffect(() => {
-    const createAnimation = (anim: Animated.Value, delay: number) => {
+    const createAnimation = (
+      anim: Animated.Value,
+      delay: number
+    ) => {
       return Animated.sequence([
         Animated.delay(delay),
+
         Animated.loop(
           Animated.sequence([
-            Animated.timing(anim, { toValue: 1, duration: 380, useNativeDriver: true }),
-            Animated.timing(anim, { toValue: 0, duration: 380, useNativeDriver: true }),
+            Animated.timing(anim, {
+              toValue: 1,
+              duration: 380,
+              useNativeDriver: true,
+            }),
+
+            Animated.timing(anim, {
+              toValue: 0,
+              duration: 380,
+              useNativeDriver: true,
+            }),
           ])
         ),
       ]);
@@ -231,23 +341,47 @@ const TypingIndicator: React.FC = memo(() => {
     ]);
 
     animGroup.start();
-    return () => animGroup.stop();
+
+    return () => {
+      animGroup.stop();
+    };
   }, [animations]);
 
   return (
     <View style={[styles.aiMessageRow, { marginVertical: 6 }]}>
       <AiAvatar />
-      <View style={[styles.messageBubble, styles.aiMessageBubble, styles.typingBubbleContainer]}>
+
+      <View
+        style={[
+          styles.messageBubble,
+          styles.aiMessageBubble,
+          styles.typingBubbleContainer,
+        ]}
+      >
         {animations.map((anim, index) => (
           <Animated.View
             key={index}
             style={[
               styles.typingDot,
               {
-                opacity: anim.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
+                opacity: anim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.35, 1],
+                }),
+
                 transform: [
-                  { translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [0, -4] }) },
-                  { scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1.25] }) },
+                  {
+                    translateY: anim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -4],
+                    }),
+                  },
+                  {
+                    scale: anim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.85, 1.25],
+                    }),
+                  },
                 ],
               },
             ]}
@@ -258,161 +392,584 @@ const TypingIndicator: React.FC = memo(() => {
   );
 });
 
-// --- КОМПОНЕНТ: Пузырь сообщения ---
-const MessageBubble: React.FC<MessageBubbleProps> = memo(({ message }) => {
-  const isUser = message.role === 'user';
+// --- ПУЗЫРЬ СООБЩЕНИЯ ---
 
-  return (
-    <View style={[styles.messageRow, isUser ? styles.userMessageRow : styles.aiMessageRow]}>
-      {!isUser && <AiAvatar />}
+const MessageBubble: React.FC<MessageBubbleProps> = memo(
+  ({ message }) => {
+    const isUser = message.role === 'user';
 
-      {isUser ? (
-        <LinearGradient
-          colors={['#3b82f6', '#1d4ed8']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.messageBubble, styles.userMessageBubble]}
-        >
-          <Text style={styles.userMessageText}>{message.content}</Text>
-        </LinearGradient>
-      ) : (
-        <View style={[styles.messageBubble, styles.aiMessageBubble]}>
-          <Text style={styles.aiMessageText}>{message.content}</Text>
-        </View>
-      )}
+    return (
+      <View
+        style={[
+          styles.messageRow,
+          isUser
+            ? styles.userMessageRow
+            : styles.aiMessageRow,
+        ]}
+      >
+        {!isUser && <AiAvatar />}
 
-      {isUser && <UserAvatar />}
-    </View>
-  );
-});
+        {isUser ? (
+          <LinearGradient
+            colors={['#3b82f6', '#1d4ed8']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[
+              styles.messageBubble,
+              styles.userMessageBubble,
+            ]}
+          >
+            <Text style={styles.userMessageText}>
+              {message.content}
+            </Text>
+          </LinearGradient>
+        ) : (
+          <View
+            style={[
+              styles.messageBubble,
+              styles.aiMessageBubble,
+            ]}
+          >
+            <Text style={styles.aiMessageText}>
+              {message.content}
+            </Text>
+          </View>
+        )}
 
-// --- ГЛАВНЫЙ ЭКРАН ConversationScreen ---
-export default function ConversationScreen({ route, navigation }: ConversationScreenProps) {
+        {isUser && <UserAvatar />}
+      </View>
+    );
+  }
+);
+
+// --- ГЛАВНЫЙ ЭКРАН ---
+
+export default function ConversationScreen({
+  route,
+  navigation,
+}: ConversationScreenProps) {
   const { conversationId } = route.params;
+
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
 
+  /*
+   * ВАЖНО:
+   * messages всегда хранится в порядке:
+   *
+   * новые → старые
+   *
+   * messages[0] — самое новое сообщение.
+   */
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [loadingMore, setLoadingMore] =
+    useState<boolean>(false);
+  const [nextCursor, setNextCursor] =
+    useState<string | null>(null);
   const [sending, setSending] = useState<boolean>(false);
   const [input, setInput] = useState<string>('');
 
   const flatListRef = useRef<FlatList<Message>>(null);
+  const loadingMoreRef = useRef<boolean>(false);
 
   const handleBackPress = useCallback(() => {
     navigation.goBack();
   }, [navigation]);
 
-  const loadConversation = useCallback(async () => {
+  // --- ПЕРВОНАЧАЛЬНАЯ ЗАГРУЗКА ---
+
+  const loadInitialData = useCallback(async () => {
     try {
-      const data: ConversationDetails = await getConversationDetails(conversationId);
-      if (data && Array.isArray(data.messages)) {
-        setMessages(data.messages);
-      }
-      if (data.title) {
-        navigation.setOptions({ title: data.title });
+      setLoading(true);
+
+      console.log('🚀 [CHAT] Старт загрузки чата...');
+
+      getConversationDetails(conversationId)
+        .then((data) => {
+          if (data?.title) {
+            navigation.setOptions({
+              title: data.title,
+            });
+          }
+        })
+        .catch(() => {});
+
+      const messagesData: PaginatedMessagesResponse =
+        await getConversationMessages(conversationId);
+
+      if (
+        messagesData &&
+        Array.isArray(messagesData.results)
+      ) {
+        console.log(
+          '=================================================='
+        );
+
+        console.log(
+          '📥 [СЫРЫЕ ДАННЫЕ С СЕРВЕРА] Первая страница:'
+        );
+
+        messagesData.results.forEach((message, index) => {
+          const time =
+            message.timestamp ??
+            message.created_at ??
+            'НЕТ ВРЕМЕНИ';
+
+          console.log(
+            `[Сервер #${index}] ID: ${message.id} | ` +
+              `Time: ${time} | Role: ${message.role} | ` +
+              `"${message.content
+                ?.substring(0, 15)
+                .replace(/\n/g, ' ')}..."`
+          );
+        });
+
+        console.log(
+          '=================================================='
+        );
+
+        /*
+         * Бэкенд уже должен возвращать:
+         * новые → старые
+         *
+         * Поэтому reverse здесь не нужен.
+         */
+
+        setMessages(messagesData.results);
+        setNextCursor(messagesData.next);
       }
     } catch (error) {
-      console.error('Error loading dialog:', error);
-      Alert.alert('Error', 'Failed to load conversation.');
+      console.error(
+        '❌ [CHAT] Ошибка первичной загрузки:',
+        error
+      );
+
+      Alert.alert(
+        'Error',
+        'Failed to load conversation.'
+      );
     } finally {
       setLoading(false);
     }
   }, [conversationId, navigation]);
 
   useEffect(() => {
-    setLoading(true);
-    loadConversation();
-  }, [loadConversation]);
+    loadInitialData();
+  }, [loadInitialData]);
 
-  // Инвертированный массив (новые сообщения в начале)
-  const invertedMessages = useMemo(() => [...messages].reverse(), [messages]);
+  // --- ПОДГРУЗКА БОЛЕЕ СТАРЫХ СООБЩЕНИЙ ---
+
+  const handleLoadMore = useCallback(async () => {
+    if (loadingMoreRef.current) {
+      console.log(
+        '⏳ [PAGINATION] Пропуск: загрузка уже идет...'
+      );
+      return;
+    }
+
+    if (!nextCursor) {
+      console.log(
+        '🏁 [PAGINATION] Пропуск: больше нет старых сообщений'
+      );
+      return;
+    }
+
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+
+    try {
+      console.log(
+        '📜 [PAGINATION] Загружаем более старые сообщения...'
+      );
+
+      const data: PaginatedMessagesResponse =
+        await getConversationMessages(
+          conversationId,
+          nextCursor
+        );
+
+      if (!data || !Array.isArray(data.results)) {
+        return;
+      }
+
+      console.log('📦 [RAW PAGE FROM SERVER]');
+
+      data.results.forEach((message, index) => {
+        console.log(
+          `#${index} | ID: ${message.id} | ` +
+            `${message.content.substring(0, 20)}`
+        );
+      });
+
+      setMessages((previousMessages) => {
+        const existingIds = new Set(
+          previousMessages.map((message) =>
+            String(message.id)
+          )
+        );
+
+        const uniqueOlderMessages =
+          data.results.filter(
+            (message) =>
+              !existingIds.has(String(message.id))
+          );
+
+        const total =
+          previousMessages.length +
+          uniqueOlderMessages.length;
+
+        console.log(
+          `🎉 [PAGINATION] Добавлено старых сообщений: ` +
+            `${uniqueOlderMessages.length}. ` +
+            `Всего сообщений: ${total}`
+        );
+
+        /*
+         * previousMessages:
+         * новые → старые
+         *
+         * data.results:
+         * ещё более старые
+         *
+         * Поэтому старую страницу добавляем в конец.
+         */
+
+        return [
+          ...previousMessages,
+          ...uniqueOlderMessages,
+        ];
+      });
+
+      setNextCursor(data.next);
+    } catch (error) {
+      console.error(
+        '❌ [PAGINATION] Ошибка подгрузки:',
+        error
+      );
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [conversationId, nextCursor]);
+
+  // --- ДИАГНОСТИЧЕСКИЙ ЛОГ ---
+
+  useEffect(() => {
+    if (messages.length === 0) {
+      return;
+    }
+
+    console.log(
+      '=================================================='
+    );
+
+    console.log(
+      '📱 [ОТОБРАЖЕНИЕ] Порядок от низа к верху:'
+    );
+
+    /*
+     * В inverted FlatList:
+     * messages[0] находится внизу экрана.
+     */
+
+    messages.forEach((message, index) => {
+      const time =
+        message.timestamp ??
+        message.created_at ??
+        'НЕТ ВРЕМЕНИ';
+
+      let tag = `[Индекс ${index}]`;
+
+      if (index === 0) {
+        tag = '⬇️ [САМЫЙ НИЗ ЭКРАНА]';
+      }
+
+      if (index === messages.length - 1) {
+        tag = '⬆️ [САМЫЙ ВЕРХ ЭКРАНА]';
+      }
+
+      console.log(
+        `${tag} -> ID: ${message.id} | ` +
+          `Time: ${time} | Role: ${message.role} | ` +
+          `"${message.content
+            ?.substring(0, 15)
+            .replace(/\n/g, ' ')}..."`
+      );
+    });
+
+    console.log(
+      '=================================================='
+    );
+  }, [messages]);
+
+  // --- ОТПРАВКА СООБЩЕНИЯ ---
 
   const handleSend = async () => {
-    if (input.trim().length === 0 || sending) return;
+    if (input.trim().length === 0 || sending) {
+      return;
+    }
+
     const userMessageContent = input.trim();
+
     setInput('');
 
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    console.log(
+      '📤 [SEND] Отправка сообщения:',
+      userMessageContent
+    );
+
+    LayoutAnimation.configureNext(
+      LayoutAnimation.Presets.easeInEaseOut
+    );
+
     setSending(true);
 
     const isFirstMessage = messages.length === 0;
     const tempId = `optimistic-${Date.now()}`;
+
     const optimisticUserMessage: Message = {
       id: tempId,
       role: 'user',
       content: userMessageContent,
     };
 
-    setMessages((prev) => [...prev, optimisticUserMessage]);
+    /*
+     * Пока ИИ ещё не ответил, сообщение пользователя —
+     * самое новое, поэтому ставим его в начало.
+     */
+
+    setMessages((previousMessages) => [
+      optimisticUserMessage,
+      ...previousMessages,
+    ]);
 
     requestAnimationFrame(() => {
-      flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+      flatListRef.current?.scrollToOffset({
+        offset: 0,
+        animated: true,
+      });
     });
 
     try {
-      const response: SendMessageResponse = await sendMessage(conversationId, userMessageContent);
-      await loadConversation();
+      const response: SendMessageResponse =
+        await sendMessage(
+          conversationId,
+          userMessageContent
+        );
 
-      if (isFirstMessage && response?.user_message?.content) {
-        const newTitle = response.user_message.content.substring(0, 20) + '...';
-        navigation.setOptions({ title: newTitle });
+      console.log(
+        '🤖 [SEND] Ответ сервера получен:',
+        response
+      );
+
+      setMessages((previousMessages) => {
+        /*
+         * Удаляем оптимистическое сообщение.
+         */
+
+        const withoutOptimistic =
+          previousMessages.filter(
+            (message) => message.id !== tempId
+          );
+
+        const existingIds = new Set(
+          withoutOptimistic.map((message) =>
+            String(message.id)
+          )
+        );
+
+        const incomingMessages: Message[] = [];
+
+        /*
+         * Ответ ИИ создан позже сообщения пользователя,
+         * поэтому он является самым новым.
+         *
+         * Итоговый порядок:
+         * ai_response → user_message → старая история
+         */
+
+        if (response?.ai_response) {
+          incomingMessages.push(
+            response.ai_response
+          );
+        }
+
+        if (response?.user_message) {
+          incomingMessages.push(
+            response.user_message
+          );
+        }
+
+        const uniqueIncoming =
+          incomingMessages.filter(
+            (message) =>
+              !existingIds.has(String(message.id))
+          );
+
+        return [
+          ...uniqueIncoming,
+          ...withoutOptimistic,
+        ];
+      });
+
+      console.log(
+        '✅ [SEND] Сообщения добавлены в стейт'
+      );
+
+      if (
+        isFirstMessage &&
+        response?.user_message?.content
+      ) {
+        const newTitle =
+          response.user_message.content.substring(0, 20) +
+          '...';
+
+        navigation.setOptions({
+          title: newTitle,
+        });
       }
+
+      requestAnimationFrame(() => {
+        flatListRef.current?.scrollToOffset({
+          offset: 0,
+          animated: true,
+        });
+      });
     } catch (error) {
-      console.error('Error sending message:', error);
-      Alert.alert('Error', 'Failed to send message.');
+      console.error(
+        '❌ [SEND] Ошибка отправки:',
+        error
+      );
+
+      Alert.alert(
+        'Error',
+        'Failed to send message.'
+      );
+
       setInput(userMessageContent);
-      setMessages((prev) => prev.filter((msg) => msg.id !== tempId));
+
+      setMessages((previousMessages) =>
+        previousMessages.filter(
+          (message) => message.id !== tempId
+        )
+      );
     } finally {
       setSending(false);
     }
   };
 
-  const handlePromptPress = useCallback((promptText: string) => {
-    setInput(promptText);
-  }, []);
-
-  const renderItem = useCallback(
-    ({ item }: ListRenderItemInfo<Message>) => <MessageBubble message={item} />,
+  const handlePromptPress = useCallback(
+    (promptText: string) => {
+      setInput(promptText);
+    },
     []
   );
 
+  const renderItem = useCallback(
+    ({ item }: ListRenderItemInfo<Message>) => (
+      <MessageBubble message={item} />
+    ),
+    []
+  );
+
+  const renderListFooter = useCallback(() => {
+    if (!loadingMore) {
+      return null;
+    }
+
+    return (
+      <View style={styles.loadingMoreContainer}>
+        <ActivityIndicator
+          size="small"
+          color="#60a5fa"
+        />
+      </View>
+    );
+  }, [loadingMore]);
+
   if (loading) {
     return (
-      <LinearGradient colors={['#121d33', '#1e3c72']} style={styles.centered}>
-        <ActivityIndicator size="large" color="#60a5fa" />
+      <LinearGradient
+        colors={['#121d33', '#1e3c72']}
+        style={styles.centered}
+      >
+        <ActivityIndicator
+          size="large"
+          color="#60a5fa"
+        />
       </LinearGradient>
     );
   }
 
-  const topSafeArea = insets.top > 0 ? insets.top : Platform.OS === 'ios' ? 12 : 8;
-  
-  // Рассчитываем точное смещение для iOS и Android
-  const keyboardOffset = Platform.OS === 'ios' ? (headerHeight > 0 ? headerHeight : topSafeArea) : 0;
+  const topSafeArea =
+    insets.top > 0
+      ? insets.top
+      : Platform.OS === 'ios'
+        ? 12
+        : 8;
+
+  const keyboardOffset =
+    Platform.OS === 'ios'
+      ? headerHeight > 0
+        ? headerHeight
+        : topSafeArea
+      : 0;
 
   return (
     <LinearGradient
-      colors={['#101b2e', '#1a335d', '#1e3c72']}
-      style={[styles.container, { paddingTop: topSafeArea }]}
+      colors={[
+        '#101b2e',
+        '#1a335d',
+        '#1e3c72',
+      ]}
+      style={[
+        styles.container,
+        {
+          paddingTop: topSafeArea,
+        },
+      ]}
     >
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={
+          Platform.OS === 'ios'
+            ? 'padding'
+            : 'height'
+        }
         keyboardVerticalOffset={keyboardOffset}
       >
-        {/* Хедер висит фиксированно вверху */}
-        <ChatHeaderBanner onBackPress={handleBackPress} />
+        <ChatHeaderBanner
+          onBackPress={handleBackPress}
+        />
 
         {messages.length === 0 && !sending ? (
-          <ChatEmptyState onPromptPress={handlePromptPress} />
+          <ChatEmptyState
+            onPromptPress={handlePromptPress}
+          />
         ) : (
           <FlatList<Message>
             ref={flatListRef}
-            data={invertedMessages}
-            keyExtractor={(item) => String(item.id)}
+            data={messages}
+            keyExtractor={(item) =>
+              String(item.id)
+            }
             renderItem={renderItem}
-            inverted={true}
-            ListHeaderComponent={sending ? <TypingIndicator /> : null}
+            inverted
+            ListHeaderComponent={
+              sending
+                ? <TypingIndicator />
+                : null
+            }
+            ListFooterComponent={
+              renderListFooter
+            }
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.2}
+            maintainVisibleContentPosition={{
+              minIndexForVisible: 0,
+            }}
             contentContainerStyle={{
               paddingHorizontal: 16,
               paddingBottom: 20,
@@ -421,8 +978,17 @@ export default function ConversationScreen({ route, navigation }: ConversationSc
           />
         )}
 
-        {/* Панель ввода сообщений */}
-        <View style={[styles.inputContainer, { paddingBottom: insets.bottom > 0 ? insets.bottom : 12 }]}>
+        <View
+          style={[
+            styles.inputContainer,
+            {
+              paddingBottom:
+                insets.bottom > 0
+                  ? insets.bottom
+                  : 12,
+            },
+          ]}
+        >
           <View style={styles.inputWrapper}>
             <TextInput
               style={styles.input}
@@ -432,27 +998,44 @@ export default function ConversationScreen({ route, navigation }: ConversationSc
               placeholderTextColor="rgba(255, 255, 255, 0.4)"
               multiline
             />
+
             <TouchableOpacity
               activeOpacity={0.8}
               style={[
                 styles.sendButton,
-                input.trim().length === 0 && styles.sendButtonDisabled,
+                input.trim().length === 0 &&
+                  styles.sendButtonDisabled,
               ]}
               onPress={handleSend}
-              disabled={input.trim().length === 0 || sending}
+              disabled={
+                input.trim().length === 0 ||
+                sending
+              }
             >
               <LinearGradient
                 colors={
                   input.trim().length > 0
-                    ? ['#3b82f6', '#2563eb']
-                    : ['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)']
+                    ? [
+                        '#3b82f6',
+                        '#2563eb',
+                      ]
+                    : [
+                        'rgba(255,255,255,0.1)',
+                        'rgba(255,255,255,0.05)',
+                      ]
                 }
-                style={styles.sendButtonGradient}
+                style={
+                  styles.sendButtonGradient
+                }
               >
                 <Ionicons
                   name="arrow-up"
                   size={18}
-                  color={input.trim().length > 0 ? '#ffffff' : 'rgba(255,255,255,0.3)'}
+                  color={
+                    input.trim().length > 0
+                      ? '#ffffff'
+                      : 'rgba(255,255,255,0.3)'
+                  }
                   style={styles.iconCentered}
                 />
               </LinearGradient>
@@ -476,6 +1059,10 @@ const styles = StyleSheet.create({
   },
   iconCentered: {
     textAlign: 'center',
+  },
+  loadingMoreContainer: {
+    paddingVertical: 12,
+    alignItems: 'center',
   },
 
   // --- HEADER BANNER ---
