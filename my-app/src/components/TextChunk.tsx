@@ -20,11 +20,9 @@ export interface ChunkTranslationState {
   error: string | null;
 }
 
-export interface WordData {
-  type: 'word' | 'space' | string;
-  wordIndex: number;
-  text: string;
-}
+export type WordData =
+  | { type: 'word'; wordIndex: number; text: string }
+  | { type: 'space'; text: string };
 
 interface WordProps {
   text: string;

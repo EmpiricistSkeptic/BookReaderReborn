@@ -6,6 +6,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { apiRequest } from '../services/apiService';
 
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/types';
+
 // ============================================================
 // ТИПЫ
 // ============================================================
@@ -32,27 +35,7 @@ interface BookDetail {
   user_progress?: UserProgress | null;
 }
 
-interface BookReaderParams {
-  bookId: BookDetail['id'];
-  initialChapterOrder: number;
-  initialLastReadPage: number;
-}
-
-// route/navigation типизированы свободно под то, что реально
-// используется в этом экране (bookId в параметрах, navigate/goBack).
-// Когда пришлёшь Stack Navigator, где регистрируются 'BookDetail' и
-// 'BookReader', свяжем типы точно через общий RootStackParamList.
-interface BookDetailScreenProps {
-  route: {
-    params: {
-      bookId: BookDetail['id'];
-    };
-  };
-  navigation: {
-    navigate: (screen: 'BookReader', params: BookReaderParams) => void;
-    goBack: () => void;
-  };
-}
+type BookDetailScreenProps = NativeStackScreenProps<RootStackParamList, 'BookDetail'>;
 
 const BookDetailScreen: React.FC<BookDetailScreenProps> = ({ route, navigation }) => {
   const { bookId } = route.params;

@@ -23,6 +23,8 @@ import {
   getConversations,
   createConversation,
   deleteConversation,
+  Conversation,
+  PaginatedConversationsResponse,
 } from '../services/conversationService';
 
 // --- ЭТАП 1. ТИПЫ И ENUM ---
@@ -35,22 +37,7 @@ export enum ConversationMode {
   WRITING = 'writing',
 }
 
-export interface Conversation {
-  id: number | string;
-  title?: string;
-  mode: ConversationMode;
-  last_message?: LastMessage | null;
-  messages_count?: number;
-  created_at?: string;
-  updated_at?: string;
-}
 
-export interface PaginatedConversationsResponse {
-  results: Conversation[];
-  next: string | null;
-  previous: string | null;
-  count?: number;
-}
 
 // --- ЭТАП 2. МЕТАДАННЫЕ РЕЖИМОВ (MODE_INFO) ---
 export interface ModeConfig {
@@ -203,7 +190,10 @@ export default function AIAssistantScreen({ navigation }: AIAssistantScreenProps
     else setIsMoreLoading(true);
 
     try {
-      const data: PaginatedConversationsResponse = await getConversations(page);
+      const data = await getConversations(page);
+      if (!data) {
+        throw new Error("Empty response from getConversations");
+      }
 
       if (data && Array.isArray(data.results)) {
         setConversations((prev) => {
@@ -251,7 +241,10 @@ export default function AIAssistantScreen({ navigation }: AIAssistantScreenProps
     setIsCreating(true);
     try {
       // Отправляем выбранный режим в функцию сервиса
-      const newConversation: Conversation = await createConversation(mode);
+      const newConversation = await createConversation(mode);
+      if (!newConversation) {
+        throw new Error("Empty response from createConversation");
+      }
       setIsModeModalVisible(false);
       navigation.navigate('Conversation', { conversationId: newConversation.id });
     } catch (error) {

@@ -22,6 +22,12 @@ export interface TranslationResult {
   [key: string]: any;
 }
 
+export interface ChunkTranslationState {
+  isTranslating: boolean;
+  text: string | null;
+  error: string | null;
+}
+
 interface TranslationBottomSheetProps {
   bottomSheetRef: React.RefObject<BottomSheet | null>;
   isTranslating: boolean;

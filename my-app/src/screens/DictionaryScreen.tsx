@@ -17,7 +17,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Clipboard from "expo-clipboard";
 
 import { apiRequest } from "../services/apiService";
-import { AuthContext } from "../contexts/AuthContext";
+
+import { useAuth } from '../contexts/AuthContext';
 
 // --- ТИПЫ И ИНТЕРФЕЙСЫ ---
 export interface WordCategory {
@@ -41,6 +42,10 @@ export interface Category {
   slug: string;
 }
 
+export interface TranslateWordResponse {
+  translation: string;
+}
+
 export interface PaginatedResponse<T> {
   results: T[];
   next: string | null;
@@ -55,19 +60,6 @@ export interface WordQueryParams {
   cursor?: string;
 }
 
-interface AuthUser {
-  id?: number | string;
-  profile?: {
-    native_language?: string;
-    [key: string]: any;
-  };
-  [key: string]: any;
-}
-
-interface AuthContextValue {
-  user?: AuthUser | null;
-  [key: string]: any;
-}
 
 interface WordCardProps {
   item: DictionaryWord;
@@ -146,7 +138,10 @@ export default function DictionaryScreen() {
   // Загрузка категорий при первом маунте
   const fetchCategories = useCallback(async () => {
     try {
-      const categoriesResponse: Category[] = await apiRequest("/categories/", "GET");
+      const categoriesResponse = await apiRequest<Category[]>("/categories/", "GET");
+      if (!categoriesResponse) {
+        throw new Error("Empty response from /categories/");
+      }
       setCategories(categoriesResponse || []);
     } catch (err) {
       console.error("Error fetching categories:", err);
@@ -181,7 +176,10 @@ export default function DictionaryScreen() {
       if (params.categories__slug) queryDict.categories__slug = params.categories__slug;
 
       const queryParams = new URLSearchParams(queryDict).toString();
-      const response: PaginatedResponse<DictionaryWord> = await apiRequest(`/dictionary/?${queryParams}`, "GET");
+      const response = await apiRequest<PaginatedResponse<DictionaryWord>>(`/dictionary/?${queryParams}`, "GET");
+      if (!response) {
+        throw new Error("Empty response from /dictionary/");
+      }
 
       const newWords = response.results || [];
       const extractedNextCursor = getCursorFromUrl(response.next);
@@ -232,7 +230,7 @@ export default function DictionaryScreen() {
 
   const viewableItems = useRef<Set<number | string>>(new Set());
   const onViewableItemsChanged = useCallback(
-    ({ viewableItems: currentViewable }: { viewableItems: ViewToken[] }) => {
+    ({ viewableItems: currentViewable }: { viewableItems: ViewToken<DictionaryWord>[] }) => {
       currentViewable.forEach(({ item }) => {
         if (item && item.id !== undefined && item.id !== null) {
           viewableItems.current.add(item.id);
@@ -346,7 +344,6 @@ export default function DictionaryScreen() {
               data={words}
               renderItem={renderItem}
               keyExtractor={(item) => String(item.id)}
-              estimatedItemSize={180}
               contentContainerStyle={{ paddingBottom: 120 }}
               showsVerticalScrollIndicator={false}
               ListEmptyComponent={() => (
@@ -370,7 +367,7 @@ export default function DictionaryScreen() {
 
 // --- КОМПОНЕНТ WordCard ---
 const WordCard: React.FC<WordCardProps> = React.memo(({ item, shouldAnimate }) => {
-  const { user } = useContext(AuthContext) as AuthContextValue;
+  const { user } = useAuth();
 
   const [translation, setTranslation] = useState<string | null>(null);
   const [isTranslating, setIsTranslating] = useState<boolean>(false);
@@ -403,7 +400,10 @@ const WordCard: React.FC<WordCardProps> = React.memo(({ item, shouldAnimate }) =
     }
     setIsTranslating(true);
     try {
-      const response = await apiRequest(`/dictionary/${item.id}/translate/`, "POST");
+      const response = await apiRequest<TranslateWordResponse>(`/dictionary/${item.id}/translate/`, "POST");
+      if (response && response.translation) {
+        setTranslation(response.translation);
+      }
       if (response && response.translation) {
         setTranslation(response.translation);
       }

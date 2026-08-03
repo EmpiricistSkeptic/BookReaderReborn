@@ -14,8 +14,9 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { useAuth } from '../contexts/AuthContext';
 
-import { AuthContext } from '../contexts/AuthContext';
+
 import { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
@@ -23,7 +24,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 const { width } = Dimensions.get('window');
 
 export default function LoginScreen({ navigation }: Props) {
-  const { signIn } = useContext(AuthContext);
+  const { signIn } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

@@ -28,6 +28,13 @@ import { processTextToStructuredChunks } from '../utils/textProcessor';
 import BookPage from '../components/BookPage';
 import Paginator, { StructuredItem, PageStyle } from '../components/Paginator';
 
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/types';
+
+import { useAuth } from '../contexts/AuthContext';
+
+import { useSelection } from '../contexts/SelectionContext';
+
 // --- Константы ---
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const TAP_TIME_THRESHOLD = 250;
@@ -48,7 +55,7 @@ type Page = StructuredItem[];
 interface ChapterInfo {
   id: number | string;
   title: string;
-  content: string;
+  content: string[];
   book_language?: string;
   total_pages?: number;
   [key: string]: unknown;
@@ -76,26 +83,7 @@ interface AuthContextValue {
   [key: string]: unknown;
 }
 
-interface SelectionValue {
-  chunkIndex: number;
-  wordIndex: number;
-}
-
-interface SelectionContextValue {
-  setSelectedWord: (value: SelectionValue | null) => void;
-  [key: string]: unknown;
-}
-
-interface BookReaderRouteParams {
-  bookId: number | string;
-  initialChapterOrder: number;
-  initialLastReadPage?: number;
-}
-
-interface BookReaderScreenProps {
-  route: { params: BookReaderRouteParams };
-  navigation: { goBack: () => void };
-}
+type BookReaderScreenProps = NativeStackScreenProps<RootStackParamList, 'BookReader'>;
 
 interface ReadingPositionSnapshot {
   anchorOriginalIndex: number | null;
@@ -103,9 +91,9 @@ interface ReadingPositionSnapshot {
 }
 
 const BookReaderScreen: React.FC<BookReaderScreenProps> = ({ route, navigation }) => {
-  const { user } = useContext(AuthContext) as AuthContextValue;
+  const { user } = useAuth();
   const { bookId, initialChapterOrder, initialLastReadPage = 1 } = route.params;
-  const { setSelectedWord } = useContext(SelectionContext) as SelectionContextValue;
+  const { setSelectedWord } = useSelection();
 
   // --- Состояния ---
   const [chapterData, setChapterData] = useState<ChapterResponse | null>(null);

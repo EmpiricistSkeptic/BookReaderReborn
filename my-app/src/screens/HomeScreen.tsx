@@ -26,6 +26,8 @@ import { AuthContext } from '../contexts/AuthContext';
 import { apiRequest } from '../services/apiService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAuth } from '../contexts/AuthContext';
+
 // Импорты ваших экранов
 import AIAssistantScreen from './AIAssistantScreen';
 import DictionaryScreen from './DictionaryScreen';
@@ -63,10 +65,6 @@ interface AuthUser {
   [key: string]: unknown;
 }
 
-interface AuthContextValue {
-  user?: AuthUser | null;
-  [key: string]: unknown;
-}
 
 // Параметры экранов, на которые LibraryScreen делает navigate().
 // Они принадлежат родительскому Stack Navigator (не этому Tab Navigator),
@@ -226,7 +224,7 @@ interface LibraryScreenProps {
 }
 
 function LibraryScreen({ navigation }: LibraryScreenProps) {
-  const { user } = useContext(AuthContext) as AuthContextValue;
+  const { user } = useAuth();
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [uploading, setUploading] = useState<boolean>(false);

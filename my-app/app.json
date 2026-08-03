@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "my-app",
+    "name": "BookLingo",
     "slug": "my-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,6 +12,8 @@
       "supportsTablet": true
     },
     "android": {
+      "package": "com.stasstoun.bookreader",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -43,6 +45,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "02e7672d-c43a-4240-a05d-f99d14d35434"
+      }
+    },
+    "owner": "stas_stoun"
   }
 }

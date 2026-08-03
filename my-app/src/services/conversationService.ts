@@ -12,11 +12,16 @@ export enum ConversationMode {
   WRITING = "writing",
 }
 
+export interface LastMessage {
+  text: string;
+  created_at?: string;
+}
+
 export interface Conversation {
   id: number | string;
   title?: string;
   mode: ConversationMode;
-  last_message?: string;
+  last_message?: LastMessage | null;
   messages_count?: number;
   created_at?: string;
   updated_at?: string;

@@ -5,6 +5,7 @@ import React, {
   ReactNode,
   Dispatch,
   SetStateAction,
+  useContext,
 } from "react";
 
 export interface SelectedWord {
@@ -44,4 +45,15 @@ export function SelectionProvider({
       {children}
     </SelectionContext.Provider>
   );
+}
+
+
+export function useSelection(): SelectionContextType {
+  const context = useContext(SelectionContext);
+
+  if (!context) {
+    throw new Error("useSelection must be used inside SelectionProvider");
+  }
+
+  return context;
 }

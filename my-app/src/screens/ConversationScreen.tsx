@@ -35,6 +35,9 @@ import {
   PaginatedMessagesResponse,
 } from '../services/conversationService';
 
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { RootStackParamList } from '../navigation/types';
+
 if (
   Platform.OS === 'android' &&
   UIManager.setLayoutAnimationEnabledExperimental
@@ -59,27 +62,7 @@ export interface SendMessageResponse {
   [key: string]: any;
 }
 
-export interface ConversationRouteParams {
-  conversationId: number | string;
-}
-
-interface ConversationScreenProps {
-  route: {
-    params: ConversationRouteParams;
-  };
-
-  navigation: {
-    goBack: () => void;
-    setOptions: (
-      options: {
-        title?: string;
-        [key: string]: any;
-      }
-    ) => void;
-
-    [key: string]: any;
-  };
-}
+type ConversationScreenProps = NativeStackScreenProps<RootStackParamList, 'Conversation'>;
 
 interface PromptItem {
   icon: keyof typeof Ionicons.glyphMap;
@@ -496,8 +479,10 @@ export default function ConversationScreen({
         })
         .catch(() => {});
 
-      const messagesData: PaginatedMessagesResponse =
-        await getConversationMessages(conversationId);
+      const messagesData = await getConversationMessages(conversationId);
+      if (!messagesData) {
+        throw new Error("Empty response from getConversationMessages");
+      }
 
       if (
         messagesData &&
@@ -584,11 +569,10 @@ export default function ConversationScreen({
         '📜 [PAGINATION] Загружаем более старые сообщения...'
       );
 
-      const data: PaginatedMessagesResponse =
-        await getConversationMessages(
-          conversationId,
-          nextCursor
-        );
+      const data = await getConversationMessages(conversationId, nextCursor);
+      if (!data) {
+        throw new Error("Empty response from getConversationMessages");
+      }
 
       if (!data || !Array.isArray(data.results)) {
         return;

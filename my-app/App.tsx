@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React from "react";
 import { ActivityIndicator, View } from 'react-native';
 
 import { NavigationContainer } from '@react-navigation/native';
@@ -6,7 +6,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
-import { AuthProvider, AuthContext } from './src/contexts/AuthContext';
+import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { SelectionProvider } from './src/contexts/SelectionContext';
 
 import WelcomeScreen from './src/screens/WelcomeScreen';
@@ -26,7 +26,7 @@ function AppNavigator() {
   const {
     isAuthenticated,
     isLoading,
-  } = useContext(AuthContext);
+  } = useAuth();
 
   if (isLoading) {
     return (

@@ -15,7 +15,7 @@ import {
 import { LinearGradient } from "expo-linear-gradient";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 
-import { AuthContext } from "../contexts/AuthContext";
+import { useAuth } from '../contexts/AuthContext';
 import { RootStackParamList } from "../navigation/types";
 
 const { width } = Dimensions.get("window");
@@ -34,7 +34,7 @@ interface RegisterForm {
 export default function RegisterScreen({
   navigation,
 }: Props) {
-  const { signUp } = useContext(AuthContext);
+  const { signUp } = useAuth();
 
   const [formData, setFormData] = useState<RegisterForm>({
     email: "",

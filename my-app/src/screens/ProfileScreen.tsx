@@ -103,7 +103,10 @@ export default function ProfileScreen() {
   const loadProfile = async () => {
     if (!profileUrl) return;
     try {
-      const profileData: UserProfile = await apiRequest(profileUrl, 'GET');
+      const profileData = await apiRequest<UserProfile>(profileUrl, 'GET');
+      if (!profileData) {
+        throw new Error("Empty response from profile endpoint");
+      }
       console.log(profileData);
       setProfile(profileData);
     } catch (error) {
@@ -137,7 +140,10 @@ export default function ProfileScreen() {
         } as any);
       }
 
-      const updatedProfile: UserProfile = await apiRequest(profileUrl, 'PATCH', formData);
+      const updatedProfile = await apiRequest<UserProfile>(profileUrl, 'PATCH', formData);
+      if (!updatedProfile) {
+        throw new Error("Empty response from profile update");
+      }
       console.log(updatedProfile);  
       setProfile(updatedProfile);
       Alert.alert('Success', 'Profile updated');

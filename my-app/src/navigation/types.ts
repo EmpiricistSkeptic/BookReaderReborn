@@ -1,5 +1,3 @@
-
-
 export type RootStackParamList = {
   Welcome: undefined;
   Login: undefined;
@@ -7,8 +5,12 @@ export type RootStackParamList = {
 
   Home: undefined;
 
-  BookDetail: undefined;
-  BookReader: undefined;
+  BookDetail: { bookId: string | number };
+  BookReader: {
+    bookId: string | number;
+    initialChapterOrder: number;
+    initialLastReadPage?: number;
+  };
   CardList: undefined;
-  Conversation: undefined;
+  Conversation: { conversationId: string | number };
 };

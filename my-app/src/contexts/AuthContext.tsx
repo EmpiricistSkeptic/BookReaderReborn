@@ -1,14 +1,37 @@
-import React, { createContext, useEffect, useState, ReactNode } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { loginUser, registerUser } from "../services/authService";
 import { setUnauthorizedHandler } from "../services/apiService";
 
+type LanguageCode = 'ru' | 'en' | 'es' | 'fr' | 'de' | 'zh' | 'ja' | 'id';
+type CefrLevel = 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2';
+
+interface UserProfile {
+  native_language?: LanguageCode;
+  language_to_learn?: LanguageCode;
+  current_level?: CefrLevel;
+  avatar?: string | null;
+  reading_font_size?: number;
+  reading_theme?: 'light' | 'sepia' | 'dark';
+  [key: string]: unknown;
+}
+
 interface User {
+  id: number | string;
+  username: string;
+  email?: string;
+  profile?: UserProfile;
   [key: string]: unknown;
 }
 
 interface LoginCredentials {
-  username: string;
+  email: string;
   password: string;
 }
 
@@ -153,4 +176,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
       {children}
     </AuthContext.Provider>
   );
+}
+
+export function useAuth(): AuthContextType {
+  const context = useContext(AuthContext);
+
+  if (!context) {
+    throw new Error("useAuth must be used inside AuthProvider");
+  }
+
+  return context;
 }
