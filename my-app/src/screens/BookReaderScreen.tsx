@@ -97,6 +97,11 @@ interface BookReaderScreenProps {
   navigation: { goBack: () => void };
 }
 
+interface ReadingPositionSnapshot {
+  anchorOriginalIndex: number | null;
+  progress: number;
+}
+
 const BookReaderScreen: React.FC<BookReaderScreenProps> = ({ route, navigation }) => {
   const { user } = useContext(AuthContext) as AuthContextValue;
   const { bookId, initialChapterOrder, initialLastReadPage = 1 } = route.params;
@@ -113,7 +118,7 @@ const BookReaderScreen: React.FC<BookReaderScreenProps> = ({ route, navigation }
   const [controlsVisible, setControlsVisible] = useState<boolean>(true);
   const [theme, setTheme] = useState<ThemeName>('light');
   const [fontSize, setFontSize] = useState<number>(16);
-  const [lineHeight, setLineHeight] = useState<number>(fontSize * 1.6);
+  const lineHeight = useMemo(() => fontSize * 1.6, [fontSize]);
   const [isTranslating, setIsTranslating] = useState<boolean>(false);
   const [translationResult, setTranslationResult] = useState<TranslationResult | null>(null);
   const [chunkTranslations, setChunkTranslations] = useState<Record<number, ChunkTranslationState>>({});
@@ -127,6 +132,7 @@ const BookReaderScreen: React.FC<BookReaderScreenProps> = ({ route, navigation }
   const touchStartTimestamp = useRef<number>(0);
   const touchStartPosition = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const isInitialChapterLoad = useRef<boolean>(true);
+  const pendingPositionRestoreRef = useRef<ReadingPositionSnapshot | null>(null);
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const progressToSaveRef = useRef<{ order: number; page: number }>({ order: currentOrder, page: currentPage });
   const settingsDebounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -166,10 +172,6 @@ const BookReaderScreen: React.FC<BookReaderScreenProps> = ({ route, navigation }
     };
   }, []);
 
-  useEffect(() => {
-    setLineHeight(fontSize * 1.6);
-    if (structuredContent.length > 0) setIsPaginating(true);
-  }, [fontSize, theme]);
 
   const fetchChapter = useCallback(
     async (order: number) => {
@@ -178,6 +180,7 @@ const BookReaderScreen: React.FC<BookReaderScreenProps> = ({ route, navigation }
 
       setLoading(true);
       isInitialChapterLoad.current = true;
+      pendingPositionRestoreRef.current = null;
       setStructuredContent([]);
       setPages([]);
       setChunkTranslations({});
@@ -232,24 +235,85 @@ const BookReaderScreen: React.FC<BookReaderScreenProps> = ({ route, navigation }
 
   const handleThemeChange = useCallback(
     async (newTheme: ThemeName) => {
+      if (newTheme === theme) return;
+
       setTheme(newTheme);
       await AsyncStorage.setItem('reading_theme', newTheme);
       saveSettings({ reading_theme: newTheme });
     },
-    [saveSettings]
+    [theme, saveSettings]
   );
+
+  const captureCurrentReadingPosition = useCallback(() => {
+    if (pages.length === 0) {
+      pendingPositionRestoreRef.current = null;
+      return;
+    }
+
+    const currentPageIndex = Math.max(
+      0,
+      Math.min(currentPage - 1, pages.length - 1)
+    );
+
+    const currentPageContent = pages[currentPageIndex];
+
+    const firstChunk = currentPageContent?.find(
+      (item) => item.type === 'chunk'
+    );
+
+    const progress =
+      pages.length > 1
+        ? currentPageIndex / (pages.length - 1)
+        : 0;
+
+    pendingPositionRestoreRef.current = {
+      anchorOriginalIndex: firstChunk?.originalIndex ?? null,
+      progress,
+    };
+  }, [currentPage, pages]);
 
   const handleFontSizeChange = useCallback(
     (newSize: number) => {
       const clampedSize = Math.max(12, Math.min(28, newSize));
+
+      if (clampedSize === fontSize) return;
+
+      // Сохраняем текущее место до изменения размера текста.
+      captureCurrentReadingPosition();
+
       setFontSize(clampedSize);
-      AsyncStorage.setItem('reading_font_size', String(clampedSize));
-      if (settingsDebounceTimeoutRef.current) clearTimeout(settingsDebounceTimeoutRef.current);
+
+      // Новый размер текста требует повторной пагинации.
+      if (structuredContent.length > 0) {
+        setIsPaginating(true);
+      }
+
+      AsyncStorage.setItem(
+        'reading_font_size',
+        String(clampedSize)
+      ).catch((error) => {
+        console.error(
+          'Failed to save font size locally:',
+          error
+        );
+      });
+
+      if (settingsDebounceTimeoutRef.current) {
+        clearTimeout(settingsDebounceTimeoutRef.current);
+      }
+
       settingsDebounceTimeoutRef.current = setTimeout(() => {
-        saveSettings({ reading_font_size: clampedSize });
+        saveSettings({
+          reading_font_size: clampedSize,
+        });
       }, SETTINGS_SAVE_DEBOUNCE_MS);
     },
-    [saveSettings]
+    [
+      fontSize,
+      structuredContent.length,
+      captureCurrentReadingPosition,
+      saveSettings,
+    ]
   );
 
   useEffect(() => {
@@ -268,27 +332,146 @@ const BookReaderScreen: React.FC<BookReaderScreenProps> = ({ route, navigation }
     };
   }, [saveProgress]);
 
+  const findRestoredPageIndex = useCallback(
+    (
+      paginatedPages: Page[],
+      snapshot: ReadingPositionSnapshot
+    ): number => {
+      if (paginatedPages.length === 0) return 0;
+
+      const progressPageIndex = Math.round(
+        snapshot.progress * (paginatedPages.length - 1)
+      );
+
+      if (snapshot.anchorOriginalIndex === null) {
+        return progressPageIndex;
+      }
+
+      const matchingPageIndexes: number[] = [];
+
+      paginatedPages.forEach((page, pageIndex) => {
+        const containsAnchor = page.some(
+          (item) =>
+            item.originalIndex === snapshot.anchorOriginalIndex
+        );
+
+        if (containsAnchor) {
+          matchingPageIndexes.push(pageIndex);
+        }
+      });
+
+      if (matchingPageIndexes.length === 0) {
+        return progressPageIndex;
+      }
+
+      // Если чанк встречается на нескольких страницах,
+      // выбираем страницу, ближайшую к прежнему проценту чтения.
+      return matchingPageIndexes.reduce(
+        (closestIndex, candidateIndex) => {
+          const closestDistance = Math.abs(
+            closestIndex - progressPageIndex
+          );
+
+          const candidateDistance = Math.abs(
+            candidateIndex - progressPageIndex
+          );
+
+          return candidateDistance < closestDistance
+            ? candidateIndex
+            : closestIndex;
+        },
+        matchingPageIndexes[0]
+      );
+    },
+    []
+  );
+
   const handlePaginated = useCallback(
     (paginatedPages: Page[]) => {
       const totalPages = paginatedPages.length;
+
+      let targetPageIndex = 0;
+
+      if (totalPages > 0) {
+        if (
+          isInitialChapterLoad.current &&
+          currentOrder === initialChapterOrder
+        ) {
+          // Первое открытие изначальной главы:
+          // используем сохранённую сервером страницу.
+          targetPageIndex = Math.max(
+            0,
+            Math.min(initialLastReadPage - 1, totalPages - 1)
+          );
+        } else if (pendingPositionRestoreRef.current) {
+          // Повторная пагинация после изменения шрифта:
+          // восстанавливаем место по чанку и проценту.
+          targetPageIndex = findRestoredPageIndex(
+            paginatedPages,
+            pendingPositionRestoreRef.current
+          );
+        } else {
+          // Запасной вариант для непредвиденной перепагинации.
+          targetPageIndex = Math.max(
+            0,
+            Math.min(currentPage - 1, totalPages - 1)
+          );
+        }
+      }
+
       setPages(paginatedPages);
       setIsPaginating(false);
-      if (totalPages > 0 && chapterData?.chapter?.id && chapterData.chapter.total_pages !== totalPages) {
-        apiRequest(`/books/${bookId}/chapters/${chapterData.chapter.id}/update_total_pages/`, 'POST', {
-          total_pages: totalPages,
-        }).catch((err) => console.error('Failed to update total_pages on backend:', err));
+
+      if (
+        totalPages > 0 &&
+        chapterData?.chapter?.id &&
+        chapterData.chapter.total_pages !== totalPages
+      ) {
+        apiRequest(
+          `/books/${bookId}/chapters/${chapterData.chapter.id}/update_total_pages/`,
+          'POST',
+          {
+            total_pages: totalPages,
+          }
+        ).catch((error) => {
+          console.error(
+            'Failed to update total_pages on backend:',
+            error
+          );
+        });
       }
-      const targetPage = isInitialChapterLoad.current && currentOrder === initialChapterOrder ? initialLastReadPage : 1;
+
       setTimeout(() => {
-        if (flatListRef.current && totalPages > 0) {
-          const pageIndex = Math.max(0, Math.min(targetPage - 1, totalPages - 1));
-          flatListRef.current.scrollToIndex({ index: pageIndex, animated: false });
-          setCurrentPage(targetPage);
-          isInitialChapterLoad.current = false;
+        if (!flatListRef.current || totalPages === 0) {
+          pendingPositionRestoreRef.current = null;
+          return;
         }
+
+        const safePageIndex = Math.max(
+          0,
+          Math.min(targetPageIndex, totalPages - 1)
+        );
+
+        flatListRef.current.scrollToIndex({
+          index: safePageIndex,
+          animated: false,
+        });
+
+        setCurrentPage(safePageIndex + 1);
+
+        isInitialChapterLoad.current = false;
+        pendingPositionRestoreRef.current = null;
       }, 50);
     },
-    [initialLastReadPage, initialChapterOrder, currentOrder, bookId, chapterData]
+    [
+      initialLastReadPage,
+      initialChapterOrder,
+      currentOrder,
+      currentPage,
+      bookId,
+      chapterData,
+      findRestoredPageIndex,
+    ]
   );
 
   const getItemLayout = (_: ArrayLike<Page> | null | undefined, index: number) => ({

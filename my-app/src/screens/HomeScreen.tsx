@@ -33,12 +33,6 @@ import ProfileScreen from './ProfileScreen';
 
 const { width } = Dimensions.get('window');
 
-// ============================================================
-// ТИПЫ
-// ============================================================
-// Если позже пришлёшь AuthContext.tsx и ApiService.tsx — уточню
-// эти типы под реальную структуру (сейчас они "лучшее предположение"
-// по тому, как поля используются в этом файле).
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
@@ -76,8 +70,7 @@ interface AuthContextValue {
 
 // Параметры экранов, на которые LibraryScreen делает navigate().
 // Они принадлежат родительскому Stack Navigator (не этому Tab Navigator),
-// поэтому здесь навигация типизирована свободно (any) — если пришлёшь
-// файл со Stack Navigator'ом, свяжем типы точно.
+
 interface LibraryNavigationParams {
   bookId: Book['id'];
   initialChapterOrder?: number;
@@ -268,11 +261,26 @@ function LibraryScreen({ navigation }: LibraryScreenProps) {
     setShowUploadModal(false);
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['application/epub+zip', 'application/x-fictionbook+xml', 'application/zip'],
+        type: ['*/*'],
         copyToCacheDirectory: true,
       });
       if (result.canceled || !result.assets) return;
       const file = result.assets[0];
+      const allowedExtensions = [".fb2", ".epub", ".zip"];
+
+      const fileName = file.name.toLowerCase();
+
+      const isSupported = allowedExtensions.some(ext =>
+          fileName.endsWith(ext)
+      );
+
+      if (!isSupported) {
+          Alert.alert(
+              "Unsupported file",
+              "Supported formats: FB2, EPUB, ZIP."
+          );
+          return;
+      }
       setUploading(true);
       const formData = new FormData();
       formData.append('file', {
